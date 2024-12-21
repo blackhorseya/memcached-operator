@@ -21,6 +21,8 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -29,6 +31,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	cachev1alpha1 "github.com/example/memcached-operator/api/v1alpha1"
+)
+
+// Definitions to manage status conditions
+const (
+	// typeAvailableMemcached represents the status of the Deployment reconciliation
+	typeAvailableMemcached = "Available"
+	// typeDegradedMemcached represents the status used when the custom resource is deleted and the finalizer operations are yet to occur.
+	typeDegradedMemcached = "Degraded"
 )
 
 // MemcachedReconciler reconciles a Memcached object
@@ -57,6 +67,7 @@ type MemcachedReconciler struct {
 func (r *MemcachedReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
+	// Fetch the Memcached instance
 	memcached := &cachev1alpha1.Memcached{}
 	err := r.Get(ctx, req.NamespacedName, memcached)
 	if err != nil {
@@ -67,6 +78,21 @@ func (r *MemcachedReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 		logger.Error(err, "Failed to get Memcached")
 		return ctrl.Result{}, err
+	}
+
+	// Let's just set the status as Unknown when no status is available
+	if memcached.Status.Conditions != nil || len(memcached.Status.Conditions) == 0 {
+		meta.SetStatusCondition(&memcached.Status.Conditions, metav1.Condition{
+			Type:    typeAvailableMemcached,
+			Status:  metav1.ConditionUnknown,
+			Reason:  "Reconciling",
+			Message: "Starting the reconciliation process",
+		})
+		err = r.Status().Update(ctx, memcached)
+		if err != nil {
+			logger.Error(err, "Failed to update Memcached status")
+			return ctrl.Result{}, err
+		}
 	}
 
 	// TODO(user): your logic here
